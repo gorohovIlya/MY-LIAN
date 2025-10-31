@@ -41,6 +41,16 @@ void Map::setElByPos(int x, int y, char chr) {
     data[y][x] = chr;
 }
 
+void Map::clearTrash() {
+    for (int i = 0; i < width; i++) {
+        for (int j = 0; j < length; j++) {
+            if (data[i][j] == '2' || data[i][j] == '.') {
+                data[i][j] = '0';
+            }
+        }
+    }
+}
+
 std::ostream& operator<<(std::ostream& os, const Map& obj) {
     for (int i = 0; i < obj.getWidth(); i++) {
         for (int j = 0; j < obj.getLength(); j++) {
@@ -100,6 +110,15 @@ bool Point::isNotObstacle(Point* next, Map* map) const {
     if (map->getElByPos(next->x, next->y) == '1') {
         return false;
     }
+    else {
+        return true;
+    }
+}
+
+bool Point::isSectionAllowed(Point* next, Map* map) const {
+    
+    if (!isNotObstacle(next, map)) { return false; }
+
     int x0 = this->x;
     int y0 = this->y;
     int x1 = next->x;
@@ -130,7 +149,6 @@ bool Point::isNotObstacle(Point* next, Map* map) const {
             y0 += sy;
         }
     }
-    
     return true;
 }
 
@@ -141,13 +159,7 @@ std::vector<Point*> Point::reachablePoints(int radius, int borderX, int borderY,
     int yc = this->y;
     int m = borderX;
     int n = borderY;
-
-    // double passedWay = 0.0;
-    // Point* currPoint = this;
-    // while (currPoint->previous != nullptr) {
-    //     passedWay += currPoint->distance(currPoint->previous);
-    //     currPoint = currPoint->previous;
-    // }
+    
     int x = 0; 
     int y = radius;
     int d = 3 - 2 * radius;
@@ -194,32 +206,61 @@ LIAN::LIAN(double maxAngle, int radius, Map* map, Point* start, Point* end, bool
     this->isAngleInDegrees = inDegrees;
 }
 
+LIAN::LIAN(const char* configurationFileName, const char* mapFileName) {
+    std::ifstream in(configurationFileName);
+    double ma;
+    int r;
+    Map* m = new Map(mapFileName);
+    int startX, startY;
+    int endX, endY;
+    bool inDegs;
+    in >> ma;
+    in >> r;
+    in >> startX >> startY;
+    in >> endX >> endY;
+    in >> inDegs;
+    Point* s = new Point(startX, startY);
+    Point* e = new Point(endX, endY);
+    this->maxAngle = ma;
+    this->radius = r;
+    this->start = s;
+    this->end = e;
+    this->map = m;
+    this->isAngleInDegrees = inDegs;
+}
+
 LIAN::~LIAN() {
-        std::set<Point*> allPoints;
-        while (!open.empty()) {
-            allPoints.insert(open.top());
-            open.pop();
-        }
-        for (Point* pt : closed) {
-            allPoints.insert(pt);
-        }
-        for (Point* pt : bestWay) {
-            allPoints.insert(pt);
-        }
-        for (Point* pt : allPoints) {
-            if (pt != start && pt != end) {
-                delete pt;
-            }
+    delete start;
+    delete end;
+    std::set<Point*> allPoints;
+    while (!open.empty()) {
+        allPoints.insert(open.top());
+        open.pop();
+    }
+    for (Point* pt : closed) {
+        allPoints.insert(pt);
+    }
+    for (Point* pt : bestWay) {
+        allPoints.insert(pt);
+    }
+    for (Point* pt : allPoints) {
+        if (pt != start && pt != end) {
+            delete pt;
         }
     }
+}
 
 std::priority_queue<Point*, std::vector<Point*>, PointComparator> LIAN::getOpen() const {
     return open;
 }
 
+Map* LIAN::getMap() {
+    return map;
+}
+
 void LIAN::addPointsToOpenIfPossible(Point* point) {
 
-    map->setElByPos(point->x, point->y, '3');
+    map->setElByPos(point->x, point->y, '.');
 
     std::vector<Point*> reachablePts = point->reachablePoints(radius, map->getLength(), map->getWidth(), end);
 
@@ -240,12 +281,12 @@ void LIAN::addPointsToOpenIfPossible(Point* point) {
 
         char mapChar = map->getElByPos(pt->x, pt->y);
 
-        if (mapChar == '2' || mapChar == '3') {
+        if (mapChar == '2' || mapChar == '.') {
             delete pt;
             continue;
         }
 
-        if (point->isAllowedByAngle(pt, maxAngle, isAngleInDegrees) && point->isNotObstacle(pt, map)) {
+        if (point->isAllowedByAngle(pt, maxAngle, isAngleInDegrees) && point->isSectionAllowed(pt, map)) {
             pt->euclid = pt->distance(end);
             if (pt->previous != nullptr) {
                 pt->pWay = point->pWay + pt->distance(point);
@@ -259,6 +300,24 @@ void LIAN::addPointsToOpenIfPossible(Point* point) {
     }
 }
 
+bool LIAN::isEndPointReachable(Point* pt) {
+    if (pt->isSectionAllowed(end, map) && pt->isAllowedByAngle(end, maxAngle)) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+void LIAN::setBestWayByPoint(Point* pt) {
+    Point* current = pt;
+    while (current != nullptr) {
+        bestWay.push_back(current);
+        current = current->previous;
+    }
+    bestWayLen = pt->pWay;
+}
+
 bool LIAN::findOptimalWay() {
     start->euclid = start->distance(end);
     open.push(start);
@@ -266,54 +325,73 @@ bool LIAN::findOptimalWay() {
     while (!open.empty()) {
         Point* a = open.top();
         open.pop();
+
+        if (abs(a->x - end->x) < radius && abs(a->y - end->y) < radius) {
+            if (isEndPointReachable(a)) {
+                Point* curr = new Point(end->x, end->y, 0.0, a);
+                setBestWayByPoint(curr);
+                return true;
+            }
+        }
         
         if (a->x == end->x && a->y == end->y) {
-            Point* current = a;
-            while (current != nullptr) {
-                bestWay.push_back(current);
-                current = current->previous;
-            }
-            bestWayLen = a->pWay;
-            // clearOpen();
-            // clearClosed();
+            setBestWayByPoint(a);
             return true;
         }
         
         closed.push_back(a);
         addPointsToOpenIfPossible(a);
     }
+    map->setElByPos(start->x, start->y, 'A');
+    map->setElByPos(end->x, end->y, 'B');
     return false;
 }
 
-// void LIAN::clearOpen() {
-//     while (!open.empty()) {
-//         if (open.top() != start && open.top() != end) {
-//             delete open.top();
-//         }
-//         open.pop();
-//     }
-// }
-
-// void LIAN::clearClosed() {
-//     for (Point* pt : closed) {
-//         if (pt != start && pt != end) {
-//             delete pt;
-//         }
-//     }
-// }
-
-// void LIAN::clearBestWay() {
-//     for (Point* pt : bestWay) {
-//         if (pt != start && pt != end) {
-//             delete pt;
-//         }
-//     }
-// }
-
-void LIAN::drawBestWay() {
-    for (Point* pt : bestWay) {
-        map->setElByPos(pt->x, pt->y, '*');
+void LIAN::drawLineBetween(Point* first, Point* second) {
+    int x0 = first->x;
+    int y0 = first->y;
+    int x1 = second->x;
+    int y1 = second->y;
+    
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+    
+    while (true) {
+        if (x0 != first->x || y0 != first->y) {
+            map->setElByPos(x0, y0, '*');
+        }
+        
+        if (x0 == x1 && y0 == y1) break;
+        
+        int e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
     }
+}
+
+void LIAN::drawBestWay(bool drawPointsBetween) {
+    map->clearTrash();
+    if (!drawPointsBetween) {
+        for (Point* pt : bestWay) {
+            map->setElByPos(pt->x, pt->y, '*');
+        }
+    }
+    else {
+        for (int i = 0; i < bestWay.size() - 1; i++) {
+            drawLineBetween(bestWay[i + 1], bestWay[i]);
+        }
+    }
+    map->setElByPos(start->x, start->y, 'A');
+    map->setElByPos(end->x, end->y, 'B');
 }
 
 std::ostream& operator<<(std::ostream& os, const std::priority_queue<Point*, std::vector<Point*>, PointComparator>& pq) {
