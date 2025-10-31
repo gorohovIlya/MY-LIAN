@@ -29,20 +29,5 @@ int main(int argc, char** argv)
   }
   Map* LIANmap = lian.getMap();
   cout << endl << *LIANmap;
-  // Map* map = new Map(argv[2]);
-  // Point* start = new Point(1,10);
-  // Point* end = new Point(34,15);
-  // LIAN lian(30, 3, map, start, end, ANGLE_IN_DEGREES);
-  // bool pathFound = lian.findOptimalWay();
-  // if  (pathFound) {
-  //   lian.drawBestWay(DRAW_POINTS_BETWEEN);
-  //   map->clearTrash();
-  // }
-  // map->setElByPos(start->x, start->y, 'A');
-  // map->setElByPos(end->x, end->y, 'B');
-  // cout << *map;
-  // delete start;
-  // delete end;
-  // delete map;
   return 0;
 }
